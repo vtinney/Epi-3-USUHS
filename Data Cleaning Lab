@@ -1,0 +1,176 @@
+//Import datasets
+	edit
+	//paste in data from csv and excel files
+	
+//Save datasets as STATA (.dta) files
+	save "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\demo1.dta"
+	save "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\demo2.dta"
+	save "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\icd9.dta"
+	
+//append stata files
+
+	use "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\demo1.dta"
+	append using "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\demo2.dta"
+
+	save "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\append.dta"
+
+//Clean unique ID (as needed) to enable merging
+	rename id_code id
+
+	//drop duplicates
+	duplicates drop id, force
+
+	// destring id
+		destring id, ignore(% X) replace
+		save "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\finaldataset.dta"
+
+//Merge datasets
+	//merge with ICD-9
+	use "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\append.dta", clear
+	merge 1:1 id_code using "C:\Users\Veronica Tinney\Desktop\Epi Lab 1\icd9.dta"
+
+//Your final dataset will include only ICD-9-CM codes
+//Treat each observation in the final dataset as an incident case
+
+	// copy princ_diag just in case
+	clonevar diagcopy = princ_diag
+
+	//ICD9 check
+	icd9 check diagcopy, generate(diagcopycheck)
+	
+	//Remove all non-ICD-9-CM codes
+	icd9 check diagcopy, generate(diagcopycheck)
+	drop if diagcopycheck !=0
+
+
+	// ICD formatting
+	replace diagcopy = regexr(diagcopy, " ", "")
+
+//Clean remaining variables
+	//clean age variable
+	//Convert erroneous ages to missing.  Consider ages > 100 as erroneous
+	sort age
+	drop if age > 100
+	drop if age < 0
+
+	//Break ages into ten categories: 0-9, 10-19….90+ plus a missing category
+	
+	generate agecat = 0
+	replace agecat = 1 if age<=9
+	replace agecat = 2 if age>=10 & age<=19
+	replace agecat = 3 if age>=20 & age<=29
+	replace agecat = 4 if age>=30 & age<=39
+	replace agecat = 5 if age>=40 & age<=49
+	replace agecat = 6 if age>=50 & age<=59
+	replace agecat = 7 if age>=60 & age<=69
+	replace agecat = 8 if age>=70 & age<=79
+	replace agecat = 9 if age>=80 & age<=89
+	replace agecat = 10 if age>=90 & age<=100
+
+	//destring race
+	encode race, gen(race_enc)
+
+	//destring total charges
+	encode total_charges, gen(totalcharges2)
+
+	//reformat ICU stay days
+	replace days_icu = . if days_icu==777
+	replace days_icu = . if days_icu==999
+
+	//destring total charges
+	replace total_charges = regexr(total_charges, "\\$", " ")
+	replace total_charges = regexr(total_charges, ",", " ")
+	replace total_charges = regexr(total_charges, " ", "")
+
+//Create case definitions
+	rename diagcopy icd9
+	generate itis = 0
+	replace itis = 1 if regexm(icd9, "^540") | regexm(icd9, "^541") | regexm(icd9, "^542") | regexm(icd9, "^543")
+	
+	generate ectomy = 0
+	replace ectomy = 1 if regexm(icd9, "^45") | regexm(icd9, "^47")
+	
+//Create new variables as needed (e.g. Turn days_icu and age into categorical variable)
+	generate icudays2 = days_icu
+	replace icudays2 = 0 if days_icu==0
+	replace icudays2 = 1 if days_icu==1
+	replace icudays2 = 2 if days_icu>=2 & days_icu<=5
+	replace icudays2 = 3 if days_icu>=6 & days_icu<=20
+	replace icudays2 = 4 if days_icu>=21 & days_icu<777
+
+//Label variables and variable categories
+	label define days 0 "0 days" 1 "1 day" 2 "2-5 days" 3 "6-20 days" 4 "> 20 days"
+	label values icudays2 days
+	label variable icudays2 "Days in ICU"
+	
+	label define teach 0 "Non-teaching hospital" 1 "Teaching hospital"
+	label values tch_hosp teach
+	
+	label define sex 0 "Female" 1 "Male"
+	label values gender sex
+	
+	label define age2 1 "0-9" 2 "10-19" 3 "20-29" 4 "30-39" 5 "40-49" 6 "50-59" 7 "60-69" 8 "70-79" 9 "80-89" 10 "90+"
+	label values agecat age2
+	label variable age "Age"
+
+	label variable totalcharges2 "Total Charges"
+	label variable icd9 "ICD-9"
+	label variable race_enc "Race"
+	label variable agecat "Age Category"
+	label variable itis "Appendicitis"
+	label variable ectomy "Appendectomy"
+	label variable gender "Gender"
+	
+	label define itis2 0 "No" 1 "Yes"
+	label values itis itis2
+	
+	label define ectomy2 0 "No" 1 "Yes"
+	label values ectomy ectomy2
+	
+	label variable tch_hosp "Teaching Hospital"
+	
+//Return final output
+
+//Table of race and gender for all the cases of appendicitis and appendectomies 
+	ssc install estout
+	estpost summarize race_enc gender itis ectomy
+	eststo summstats
+	esttab summstats using table2.rtf, replace main(sum)
+	
+	tabulate race_enc, gen(dum_race)
+	tabulate race_enc dum_race1
+	tabulate race_enc dum_race2
+	tabulate race_enc dum_race3
+	tabulate race_enc dum_race4
+	tabulate race_enc dum_race5
+	tabulate race_enc dum_race6
+	tabulate race_enc dum_race7
+	
+	tabulate gender, gen(dum_gender)
+	tabulate gender dum_gender1
+	tabulate gender dum_gender2
+	
+	eststo summstats: estpost summarize dum_gender1 dum_gender2 dum_race1 dum_race2 dum_race3 dum_race4 dum_race5 dum_race6 dum_race7
+	eststo itis1: estpost summarize dum_gender1 dum_gender2 dum_race1 dum_race2 dum_race3 dum_race4 dum_race5 dum_race6 dum_race7 if itis==1
+	eststo noitis: estpost summarize dum_gender1 dum_gender2 dum_race1 dum_race2 dum_race3 dum_race4 dum_race5 dum_race6 dum_race7 if itis==0
+	eststo ectomy1: estpost summarize dum_gender1 dum_gender2 dum_race1 dum_race2 dum_race3 dum_race4 dum_race5 dum_race6 dum_race7 if ectomy==1
+	eststo noectomy: estpost summarize dum_gender1 dum_gender2 dum_race1 dum_race2 dum_race3 dum_race4 dum_race5 dum_race6 dum_race7 if ectomy==0
+	esttab summstats itis1 noitis ectomy1 noectomy using table8.rtf, replace main(sum) mtitle("Full sample" "Appendicitis" "No Appendicitis" "Appendectomy" "No Appendectomy") coeflabel(dum_race1 "American Indian" dum_race2 "Asian" dum_race3 "Bi-racial" dum_race 4 "Black" dum_race5 "Other" dum_race5 "Other" dum_race6 "Unknown" dum_race7 "White" dum_gender1 "Female" dum_gender2 "Male" itis "Appendicitis" ectomy "Appendectomy")
+	
+//2x2 table of cases of appendicitis in teaching hospitals versus non-teaching hospitals
+	tabulate tch_hosp, gen(dum_teach)
+	tabulate tch_hosp dum_teach1
+	tabulate tch_hosp dum_teach2
+	
+	eststo summstats: estpost summarize dum_teach1 dum_teach2
+	eststo itis2: estpost summarize dum_teach1 dum_teach2 if itis==1
+	eststo noitis2: estpost summarize dum_teach1 dum_teach2 if itis==0
+	eststo ectomy2: estpost summarize dum_teach1 dum_teach2 if ectomy==1
+	eststo noectomy2: estpost summarize dum_teach1 dum_teach2 if ectomy==0
+	esttab summstats itis2 noitis2 ectomy2 noectomy2 using table10.rtf, replace main(sum) mtitle("Full sample" "Appendicitis" "No Appendicitis" "Appendectomy" "No Appendectomy") coeflabel(dum_teach1 "Non-teaching Hospital" dum_teach2 "Teaching Hospital")
+	
+/*Bar graph showing the average cost of hospitalization for patients with an appendectomy by age category and 
+ICU stay (Turn days_icu into a categorical [yes/no/other] variable)*/
+
+	graph hbar totalcharges2 if ectomy==1, over(agecat) over(icudays2)
+	
